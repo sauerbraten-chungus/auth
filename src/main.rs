@@ -8,13 +8,20 @@ use axum::{
     Router,
     extract::State,
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse, Json},
     routing::get,
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::Serialize;
-use tower_http::trace::TraceLayer;
+use serde_with::skip_serializing_none;
 use tracing::{debug, error, info, warn};
+
+#[derive(Serialize)]
+#[skip_serializing_none]
+struct AuthResponse {
+    token: Option<String>,
+    error: Option<String>,
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -70,8 +77,10 @@ async fn get_jwt(headers: HeaderMap, State(state): State<AppState>) -> impl Into
                 .unwrap()
                 .as_secs() as usize;
 
+            let expires_in = 3600; // 1 hour
+
             let claims = Claims {
-                exp: now + 3600,
+                exp: now + expires_in,
                 iat: now,
                 sub: "kappapenis".to_string(),
             };
@@ -79,26 +88,42 @@ async fn get_jwt(headers: HeaderMap, State(state): State<AppState>) -> impl Into
             match generate_jwt(&state.secret_chungus, &claims) {
                 Ok(token) => {
                     info!("JWT generated successfully");
-                    (StatusCode::OK, token)
+                    let response = AuthResponse {
+                        token: Some(token),
+                        error: None,
+                    };
+                    (StatusCode::OK, Json(response))
                 }
                 Err(e) => {
                     error!("Failed to generate JWT: {:?}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to generate token".to_string(),
+                        Json(AuthResponse {
+                            token: None,
+                            error: Some(e.to_string()),
+                        }),
                     )
                 }
             }
         }
-        Some(key) => {
-            warn!("Invalid API key attempted: {}", key);
-            (StatusCode::UNAUTHORIZED, "Invalid API Key".to_string())
+        Some(_) => {
+            warn!("Invalid API key attempted");
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(AuthResponse {
+                    token: None,
+                    error: Some("Invalid API Key".to_string()),
+                }),
+            )
         }
         None => {
             warn!("Request missing CHUNGUS-KEY header");
             (
                 StatusCode::BAD_REQUEST,
-                "Missing chungus header".to_string(),
+                Json(AuthResponse {
+                    token: None,
+                    error: Some("Missing chungus header".to_string()),
+                }),
             )
         }
     }
