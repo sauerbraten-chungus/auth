@@ -56,11 +56,11 @@ async fn main() {
         .route("/auth", get(get_jwt))
         .with_state(state);
 
-    let bind_addr = "127.0.0.1:8081";
+    let bind_addr = "0.0.0.0:8081";
     let listener = tokio::net::TcpListener::bind(bind_addr).await.unwrap();
 
-    axum::serve(listener, app).await.unwrap();
     info!("Server started at {}", bind_addr);
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn get_jwt(headers: HeaderMap, State(state): State<AppState>) -> impl IntoResponse {
